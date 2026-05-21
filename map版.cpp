@@ -1,5 +1,4 @@
 //11327104林采寧 11327111林方晴
-
 #include <iostream>
 #include <string>
 #include <vector>
@@ -7,6 +6,7 @@
 #include <cmath>
 #include <iomanip>
 #include <cstring>
+#include <unordered_map>
 
 struct Edge {
     char putID[12];
@@ -17,7 +17,6 @@ struct Edge {
 struct AdjacencyNode {
     char ID[12];
     float weight = 0;
-    AdjacencyNode *next = nullptr;
 };
 
 struct ConnectNode {
@@ -26,22 +25,23 @@ struct ConnectNode {
 
 struct PutID {
     char ID[12];
-    AdjacencyNode *next = nullptr;
     int connectCount = 0;
     std::vector <ConnectNode> connectList;
 };
 
 class AdjacencyList {
   private:
-    std::vector<PutID> adjList;
+    std::unordered_map<std::string, std::vector<AdjacencyNode>> adjList;
+    std::unordered_map<std::string, int> visitedIndex;
+    std::vector<PutID> sender;
     int listSize = 0;
     int edgeSum = 0;
 
-    int GetIDIndex(char temp[12]);
-    void Insert(Edge edge, int index); //cur這個邊從第index位置的ID發送
-    void Insert(Edge edge); //edge.putID是全新的發送者
-    void PushIDtoList(char ID[12]);
-
+    void SortPutID();
+    void SortAdjNode(std::vector<AdjacencyNode> &temp);
+    void Sort();
+    void SortConnect(PutID &cur);
+    void Connection(PutID &todo);
   public:
     ~AdjacencyList() {
         clear();
@@ -50,9 +50,8 @@ class AdjacencyList {
     int getListSize() {return listSize;}
     void CreatList(std::vector<Edge> &Info);
     void WriteFileAdj(std::string num);
-    void Connection(int index);
     void WriteFileCnt(std::string num);
-    void Sort();
+    void ConnectForEach();
 };
 
 /********************************************/
@@ -62,7 +61,6 @@ std::string RemoveDotTab(std::string target);
 bool IsInt(std::string num);
 void GetN(std::string temp , int &n);
 bool SetInfo(std::vector<Edge> &Info , std::string &num);
-bool ChangeFile(std::string filename , std::string outputName);
 bool ReadBin(std::string outputName , std::vector<Edge> &Info);
 /*********************************************/
 
@@ -90,10 +88,7 @@ int main() {
                 std::cout << "### There is no graph and choose 1 first. ###\n";
             } else {
                 std::cout << "\n<<< There are " << adjacencyList.getListSize() << " IDs in total. >>>" << std::endl;
-                for (int i = 0; i < adjacencyList.getListSize(); i++) {
-                    adjacencyList.Connection(i);
-                }
-                adjacencyList.Sort();
+                adjacencyList.ConnectForEach();
                 adjacencyList.WriteFileCnt(num);
             }
         } else {
@@ -129,7 +124,7 @@ bool IsInt(std::string num) {
         if(num[i] > '9' || num[i] < '0') {
             return false;
         }
-    }   
+    }
     return true;
 }
 
@@ -194,92 +189,98 @@ bool ReadBin(std::string fileName , std::vector<Edge> &Info) {
 }
 
 //-------------------AdjacencyList--------------------------//
-//private:
-int AdjacencyList::GetIDIndex(char temp[12]) {
-    for (int i = 0 ; i < adjList.size() ; i++) {
-        if (strcmp(temp, adjList[i].ID) == 0) return i;
-    }
-    return -1;
-}
 
-void AdjacencyList::Insert(Edge edge, int index) {//cur這個邊從第index位置的ID發送
-    AdjacencyNode *toInsert = new AdjacencyNode;
-    strcpy(toInsert->ID , edge.getID);
-    toInsert->weight = edge.weight;
-
-    if (adjList[index].next == nullptr || strcmp(toInsert->ID, adjList[index].next->ID) < 0) {
-        toInsert->next = adjList[index].next;
-        adjList[index].next = toInsert;
-        return;
-    }
-    
-    // 找插入位置
-    AdjacencyNode *temp = adjList[index].next;
-    while (temp->next != nullptr && strcmp(temp->next->ID, toInsert->ID) < 0) {
-        temp = temp->next;
-    }
-    toInsert->next = temp->next;
-    temp->next = toInsert;
-}
-
-void AdjacencyList::Insert(Edge edge) {//edge.putID是全新的發送者
-    int i = 0;
-    for ( ; i < adjList.size() ; i++) {
-        if (strcmp(edge.putID , adjList[i].ID) < 0) {
-            break;
+//private
+void AdjacencyList::SortPutID() {
+   for (int i = 0; i < sender.size() - 1; i++) {
+        for (int j = i + 1; j < sender.size(); j++) {
+            if (strcmp(sender[i].ID , sender[j].ID) > 0) std::swap(sender[i], sender[j]);
         }
-    } // 找位置
-    PutID temp;
-    strcpy(temp.ID, edge.putID);
-
-    AdjacencyNode *node = new AdjacencyNode;
-    strcpy(node->ID, edge.getID);
-    node->weight = edge.weight;
-    temp.next = node;
-
-    adjList.insert(adjList.begin() + i , temp);
+        visitedIndex[sender[i].ID] = i; // 第i個的資料確定
+    } 
+    visitedIndex[sender[sender.size() - 1].ID] = sender.size() - 1;// 設定最後一個
 }
 
-void AdjacencyList::PushIDtoList(char ID[12]) {
-    int i = 0;
-    for ( ; i < adjList.size() ; i++) {
-        if (strcmp(ID , adjList[i].ID) < 0) {
-            break;
+void AdjacencyList::SortAdjNode(std::vector<AdjacencyNode> &temp) {
+   for (int i = 0; i < temp.size() - 1; i++) {
+        for (int j = i + 1; j < temp.size(); j++) {
+            if (strcmp(temp[i].ID , temp[j].ID) > 0) 
+                std::swap(temp[i], temp[j]);
+        }
+    } 
+}
+
+void AdjacencyList::Sort() {
+   for (int i = 0; i < sender.size() - 1; i++) {
+        for (int j = i + 1; j < sender.size(); j++) {
+            if (sender[i].connectCount < sender[j].connectCount) std::swap(sender[i], sender[j]);
+            else if (sender[i].connectCount == sender[j].connectCount && strcmp(sender[i].ID , sender[j].ID) > 0) std::swap(sender[i], sender[j]);
+        }
+    } 
+}
+
+void AdjacencyList::SortConnect(PutID &cur) {
+   for (int i = 0; i < cur.connectList.size() - 1; i++) {
+        for (int j = i + 1; j < cur.connectList.size(); j++) {
+            if (strcmp(cur.connectList[i].ID , cur.connectList[j].ID) > 0) std::swap(cur.connectList[i], cur.connectList[j]);
+        }
+    } 
+}
+
+void AdjacencyList::Connection(PutID &todo) {
+    todo.connectList.clear();
+    todo.connectCount = 0;
+
+    std::vector<std::string> queue; 
+    std::vector<bool> visited(adjList.size(), false);
+
+    int index = visitedIndex[todo.ID];
+    visited[index] = true; 
+    queue.push_back(todo.ID);
+  
+    while (!queue.empty()) {
+        std::string cur = queue.front();// FIFO
+        queue.erase(queue.begin());
+        std::vector<AdjacencyNode> adjNodes = adjList[cur];//cur直接連接到的東西
+        for (int i = 0; i < adjNodes.size(); i++) {
+            if (!visited[ visitedIndex[adjNodes[i].ID] ]) {
+                queue.push_back(adjNodes[i].ID);
+                visited[visitedIndex[adjNodes[i].ID]] = true;
+                ConnectNode temp;
+                strcpy(temp.ID, adjNodes[i].ID);
+                todo.connectList.push_back(temp);
+                todo.connectCount++;
+            }
         }
     }
-    PutID temp;
-    strcpy(temp.ID , ID);
-    adjList.insert(adjList.begin() + i , temp);
 }
 
 //public:
 void AdjacencyList::clear() {
-    for (int i = 0; i < adjList.size(); i++) {
-        AdjacencyNode *temp = adjList[i].next;
-        while (temp != nullptr) {
-            AdjacencyNode *next = temp->next;
-            delete temp;
-            temp = next;
-        }
-        adjList[i].next = nullptr;
-    }
     adjList.clear();
+    sender.clear();
     listSize = 0;
     edgeSum = 0;
 }
 
 void AdjacencyList::CreatList(std::vector<Edge> &Info) {
-    for (int i = 0 ; i < Info.size() ; i++) {
+    for (int i = 0 ; i < Info.size() ; i++) { 
         Edge cur = Info[i];
-        int index = GetIDIndex(cur.putID); //看有沒有發送過(-1是沒有)
-        if (index != -1) {//發送過資料
-            Insert(cur, index); //加入到某一特定串列
-            int getIDindex = GetIDIndex(cur.getID); //收訊者有沒有出現
-            if (getIDindex == -1) {
-                PushIDtoList(cur.getID);//存在的節點但是沒發過訊號
-            }
-        } else {
-            Insert(cur); //加入到adjList
+        AdjacencyNode temp;
+        strcpy(temp.ID, cur.getID);
+        temp.weight = cur.weight;
+        if (adjList.find(cur.putID) == adjList.end()) { //getId不存在sender
+            PutID toAdd;
+            strcpy(toAdd.ID, cur.putID);
+            sender.push_back(toAdd);
+        }
+        adjList[cur.putID].push_back(temp); //如果找不到這個發訊者:建新的 找到:塞進去
+
+        if (adjList.find(cur.getID) == adjList.end()) { //getId不存在sender
+            adjList[cur.getID];
+            PutID toAdd2;
+            strcpy(toAdd2.ID, cur.getID);
+            sender.push_back(toAdd2);
         }
         edgeSum++;
     }
@@ -293,19 +294,22 @@ void AdjacencyList::WriteFileAdj(std::string num) {
     std::string outputName = "pairs" + num + ".adj";
     std::ofstream fout(outputName);
     fout << "<<< There are " << listSize << " IDs in total. >>>" << std::endl;
-    for (int i = 0 ; i < adjList.size() ; i++) {
-        fout << "[" << std::setw(3) << i + 1 << "] " << adjList[i].ID << ": " << std::endl;
 
-        AdjacencyNode *temp = adjList[i].next;
+    SortPutID();
+    for (int i = 0 ; i < sender.size() ; i++) {
+        fout << "[" << std::setw(3) << i + 1 << "] " << sender[i].ID << ": " << std::endl;
+
+        std::vector<AdjacencyNode> temp = adjList[sender[i].ID];
+        SortAdjNode(temp);
         int count = 1;
         fout << "\t";
-        while (temp != nullptr) {
-            fout << "(" << std::setw(2) << count << ") " << temp->ID << "," << std::setw(7) << temp->weight;
+
+        for (int j = 0; j < temp.size(); j++) {
+            fout << "(" << std::setw(2) << count << ") " << temp[j].ID << "," << std::setw(7) << temp[j].weight;
             if (count % 12 == 0) fout << std::endl;
-            temp = temp->next;
             count++;
 
-            if (temp != nullptr) {
+            if (j != temp.size() - 1) {
                 fout << "\t";
             }
         }
@@ -315,47 +319,14 @@ void AdjacencyList::WriteFileAdj(std::string num) {
     fout.close();
 }
 
-void AdjacencyList::Connection(int index) {
-    adjList[index].connectList.clear();
-    adjList[index].connectCount = 0;
-
-    std::vector<int> queue;
-    std::vector<bool> visited(adjList.size(), false);
-
-    visited[index] = true;
-    queue.push_back(index);
-
-    while (!queue.empty()) {
-        int cur = queue.front();// FIFO
-        queue.erase(queue.begin());
-        AdjacencyNode *nextc = adjList[cur].next;
-        while (nextc != nullptr) {
-            int nextIndex = GetIDIndex(nextc->ID);
-            if (!visited[nextIndex]) {
-                visited[nextIndex] = true;
-                ConnectNode temp;
-                strcpy(temp.ID, adjList[nextIndex].ID);
-                int n = 0; // 找到插入位置
-                while (n < adjList[index].connectList.size() && strcmp(adjList[index].connectList[n].ID, temp.ID) < 0) {
-                    n++;
-                }
-                adjList[index].connectList.insert(adjList[index].connectList.begin() + n, temp);
-                adjList[index].connectCount++;
-                queue.push_back(nextIndex);
-            }
-            nextc = nextc->next;
-        }
-    }
-}
-
 void AdjacencyList::WriteFileCnt(std::string num) {
     std::string outputName = "pairs" + num + ".cnt";
     std::ofstream fout(outputName);
     fout << "<<< There are " << listSize << " IDs in total. >>>" << std::endl;
-    for (int i = 0 ; i < adjList.size() ; i++) {
-        fout << "[" << std::setw(3) << i + 1 << "] " << adjList[i].ID << "(" <<  adjList[i].connectCount <<"): " << std::endl;
-        for (int j = 0; j < adjList[i].connectList.size(); j++) {
-            fout << "\t" << "(" << std::setw(2) << j + 1 << ") " << adjList[i].connectList[j].ID ;
+    for (int i = 0 ; i < sender.size() ; i++) {
+        fout << "[" << std::setw(3) << i + 1 << "] " << sender[i].ID << "(" <<  sender[i].connectCount <<"): " << std::endl;
+        for (int j = 0; j < sender[i].connectList.size(); j++) {
+            fout << "\t(" << std::setw(2) << j + 1 << ") " << sender[i].connectList[j].ID;
             if ((j + 1) % 12 == 0 && j != 0) fout << std::endl;
         }
         fout << std::endl;
@@ -363,14 +334,10 @@ void AdjacencyList::WriteFileCnt(std::string num) {
     fout.close();
 }
 
-void AdjacencyList::Sort() {
-   for (int i = 0; i < adjList.size() - 1; i++) {
-        for (int j = i + 1; j < adjList.size(); j++) {
-            if (adjList[i].connectCount < adjList[j].connectCount) {
-                std::swap(adjList[i], adjList[j]);
-            } else if (adjList[i].connectCount == adjList[j].connectCount && strcmp(adjList[i].ID , adjList[j].ID) > 0) {
-                std::swap(adjList[i], adjList[j]);
-            }
-        }
-    } 
+void AdjacencyList::ConnectForEach() {
+    for (int i = 0; i < sender.size(); i++) {
+        Connection(sender[i]);
+        SortConnect(sender[i]);
+    }
+    Sort();
 }
